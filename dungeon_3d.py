@@ -4,13 +4,19 @@ import math
 from load_assets import load_enemy_sprites, load_textures
 import os
 import json
-import pickle
 from datetime import datetime
 
 pygame.mixer.init()
 
 # Constantes de perspective
 VERTICAL_PERSPECTIVE_FACTOR = 160  # Facteur pour la position verticale des sprites
+
+# Rayons / tailles utilisés pour les tests de collision de grille
+# Ajusté pour permettre au joueur de passer plus facilement dans des couloirs étroits
+PLAYER_RADIUS = 0.10  # rayon du joueur en cases (réduit)
+ENEMY_RADIUS_FACTOR = 0.18  # multiplicateur sur la 'height' du monstre pour estimer son rayon
+MAX_ENEMY_RADIUS = 0.4  # rayon max autorisé pour un ennemi
+POTION_RADIUS = 0.18  # rayon pour la potion
 
 class Dungeon:
     def __init__(self, width=20, height=20):
@@ -61,12 +67,30 @@ class Dungeon:
         return (x < 0 or x >= self.width or y < 0 or y >= self.height or 
                 self.grid[int(y)][int(x)] == 0)
 
+    def can_occupy(self, x, y, radius=0.4):
+        """Return True if a circular area centered on (x,y) with given radius
+        fits entirely on non-wall tiles. This prevents wide sprites from
+        overlapping walls when moving or being placed.
+        """
+        min_cx = int(math.floor(x - radius))
+        max_cx = int(math.floor(x + radius))
+        min_cy = int(math.floor(y - radius))
+        max_cy = int(math.floor(y + radius))
+
+        for cx in range(min_cx, max_cx + 1):
+            for cy in range(min_cy, max_cy + 1):
+                if cx < 0 or cy < 0 or cx >= self.width or cy >= self.height:
+                    return False
+                if self.grid[cy][cx] == 0:
+                    return False
+        return True
+
 class Player3D:
     def __init__(self, x, y):
         self.x = x
         self.y = y
         self.z = 0.0  # Ground level
-        self.eye_height = 2.0  # Eye height above ground
+        self.eye_height = 1.8  # Eye height above ground
         self.angle = 0
         self.fov = math.pi / 3
         self.hp = 250
@@ -84,7 +108,8 @@ class Player3D:
         new_x = self.x + dx * 0.1
         new_y = self.y + dy * 0.1
         
-        if not dungeon.is_wall(new_x, new_y):
+        # Vérifier l'espace en tenant compte du rayon du joueur (utilise constante configurée)
+        if dungeon.can_occupy(new_x, new_y, radius=PLAYER_RADIUS):
             self.x, self.y = new_x, new_y
     
     def rotate(self, angle_delta):
@@ -153,6 +178,7 @@ class Player3D:
 
         roll = random.randint(1, 100)
         return roll <= effective_accuracy
+
     def _calculate_shoot_angle(self, mouse_x, screen_width):
         center_x = screen_width // 2
         angle_offset = (mouse_x - center_x) / center_x * (self.fov / 2)
@@ -219,26 +245,20 @@ class HealthPotion:
         self.heal_amount = random.randint(20, 40)
 
 class Enemy:
-    def __init__(self, x, y, enemy_type=None, available_types=None):
+    def __init__(self, x, y, enemy_type=None, available_types=None, enemy_stats=None):
         self.x = x
         self.y = y
         self.z = 0.0  # Ground level
-        self.height = 2.2  # Enemy height (plus grand que le joueur)
-        self.ground_level = True  # Flag for ground-level rendering
-        
-        # Use available types from loaded sprites or fallback
+        self.enemy_stats = enemy_stats or {}
+        self.height = 2.2  # Valeur par défaut
+        self.ground_level = True
         if available_types is None:
-            available_types = ["orc", "skeleton", "goblin", "troll"]
-        
-        # Random enemy type if not specified
+            available_types = list(self.enemy_stats.keys()) if self.enemy_stats else ["orc", "skeleton", "goblin", "troll"]
         if enemy_type is None:
             self.enemy_type = random.choice(available_types)
         else:
             self.enemy_type = enemy_type
-
-        # Définir les statistiques selon le type d'ennemi
         self._set_stats_for_type(self.enemy_type)
-
         self.move_timer = 0
         self.shoot_timer = 0
         self.is_shooting = False
@@ -246,35 +266,25 @@ class Enemy:
         self.hit_animation = 0
         self.death_animation = 0
         self.is_dead = False
-
     def _set_stats_for_type(self, enemy_type):
-        """Définit les statistiques selon le type d'ennemi"""
-        stats = {
-            "goblin": {
-                "hp": 20, "max_hp": 20, "level": 1, "xp_value": 15,
-                "damage_dice": (1, 4), "accuracy": 65  # 1d4 dégâts, 65% précision
-            },
-            "skeleton": {
-                "hp": 35, "max_hp": 35, "level": 2, "xp_value": 25,
-                "damage_dice": (1, 6), "accuracy": 70  # 1d6 dégâts, 70% précision
-            },
-            "orc": {
-                "hp": 50, "max_hp": 50, "level": 3, "xp_value": 35,
-                "damage_dice": (1, 8), "accuracy": 75  # 1d8 dégâts, 75% précision
-            },
-            "troll": {
-                "hp": 80, "max_hp": 80, "level": 4, "xp_value": 50,
-                "damage_dice": (2, 6), "accuracy": 80  # 2d6 dégâts, 80% précision
-            }
-        }
-
-        enemy_stats = stats.get(enemy_type, stats["skeleton"])
-        self.hp = enemy_stats["hp"]
-        self.max_hp = enemy_stats["max_hp"]
-        self.level = enemy_stats["level"]
-        self.xp_value = enemy_stats["xp_value"]
-        self.damage_dice = enemy_stats["damage_dice"]  # (nombre_dés, faces_par_dé)
-        self.accuracy = enemy_stats["accuracy"]  # Pourcentage de précision
+        stats = self.enemy_stats.get(enemy_type, {})
+        self.height = stats.get("height", 2.2)
+        self.ground_level = stats.get("ground_level", True)
+        self.hp = stats.get("hp", 10)
+        self.max_hp = self.hp
+        self.level = stats.get("level", 1)
+        self.xp_value = stats.get("xp_value", 5)
+        damage_dice_str = stats.get("damage_dice", "1d4")
+        # Conversion de la chaîne 'XdY' en tuple (X, Y)
+        if isinstance(damage_dice_str, str):
+            try:
+                num, faces = damage_dice_str.lower().split('d')
+                self.damage_dice = (int(num), int(faces))
+            except Exception:
+                self.damage_dice = (1, 4)
+        else:
+            self.damage_dice = damage_dice_str
+        self.accuracy = stats.get("accuracy", 0.6)
 
     def take_damage(self, damage):
         """L'ennemi prend des dégâts"""
@@ -300,13 +310,12 @@ class Enemy:
 
     def roll_attack(self, target_level=1):
         """Détermine si l'attaque réussit"""
-        # Calculer la précision effective basée sur les niveaux
+        # Calculer la précision effective basée sur les niveaux.
+        # self.accuracy est généralement un float (ex: 0.6). Utiliser une probabilité float cohérente.
         level_diff = self.level - target_level
-        effective_accuracy = self.accuracy + (level_diff * 5)  # +/-5% par niveau de différence
-        effective_accuracy = max(10, min(95, effective_accuracy))  # Entre 10% et 95%
-
-        roll = random.randint(1, 100)
-        return roll <= effective_accuracy
+        effective_accuracy = self.accuracy + (level_diff * 0.05)  # +/-5% (0.05) par niveau
+        effective_accuracy = max(0.1, min(0.95, effective_accuracy))  # Bornes en probabilité
+        return random.random() < effective_accuracy
 
 
     def _try_move_random(self, dungeon):
@@ -315,8 +324,9 @@ class Enemy:
         if self.move_timer > 30:  # Move more frequently
             dx, dy = random.choice([-0.1, 0, 0.1]), random.choice([-0.1, 0, 0.1])  # Smaller steps
             new_x, new_y = self.x + dx, self.y + dy
-            
-            if not dungeon.is_wall(new_x, new_y):
+            # utiliser un radius basé sur la hauteur de l'ennemi mais réduit
+            enemy_radius = min(MAX_ENEMY_RADIUS, self.height * ENEMY_RADIUS_FACTOR)
+            if dungeon.can_occupy(new_x, new_y, radius=enemy_radius):
                 self.x, self.y = new_x, new_y
             self.move_timer = 0
 
@@ -338,13 +348,14 @@ class Enemy:
 
             # Vérifier si la nouvelle position est dans les limites de la carte
             if 0 <= new_x < dungeon.width and 0 <= new_y < dungeon.height:
-                # Vérifier si la nouvelle position n'est pas un mur
-                if not dungeon.is_wall(new_x, new_y):
-                    # Vérifier si la nouvelle position ne chevauche pas un autre monstre
-                    if not any(math.sqrt((new_x - e.x) ** 2 + (new_y - e.y) ** 2) < 0.5 for e in enemies if e != self):
-                        # Déplacement progressif pour un mouvement fluide
-                        self.x += (new_x - self.x) * 0.5
-                        self.y += (new_y - self.y) * 0.5
+                # Vérifier si la nouvelle position n'est pas un mur en tenant compte du radius
+                enemy_radius = min(MAX_ENEMY_RADIUS, self.height * ENEMY_RADIUS_FACTOR)
+                if dungeon.can_occupy(new_x, new_y, radius=enemy_radius):
+                     # Vérifier si la nouvelle position ne chevauche pas un autre monstre
+                     if not any(math.sqrt((new_x - e.x) ** 2 + (new_y - e.y) ** 2) < 0.5 for e in enemies if e != self):
+                         # Déplacement progressif pour un mouvement fluide
+                         self.x += (new_x - self.x) * 0.5
+                         self.y += (new_y - self.y) * 0.5
 
     def _try_shoot(self, player):
         distance = math.sqrt((player.x - self.x) ** 2 + (player.y - self.y) ** 2)
@@ -395,7 +406,7 @@ class Enemy:
                 new_y = self.y + (dy / norm) * 0.1
 
                 # Vérifier collisions avec murs et ennemis
-                if not dungeon.is_wall(new_x, new_y) and not any(math.sqrt((new_x - e.x) ** 2 + (new_y - e.y) ** 2) < 0.5 for e in enemies if e != self):
+                if dungeon.can_occupy(new_x, new_y, radius=min(MAX_ENEMY_RADIUS, self.height * ENEMY_RADIUS_FACTOR)) and not any(math.sqrt((new_x - e.x) ** 2 + (new_y - e.y) ** 2) < 0.5 for e in enemies if e != self):
                     self.x, self.y = new_x, new_y
             else:
                 return self._try_shoot(player)  # Tirer si à portée
@@ -580,19 +591,24 @@ class Game:
             print(f"Erreur de chargement des ressources : {e}")
             self.potion_sound = None
             self.potion_use_sound = None
-        
+
+        # Chargement des statistiques des ennemis
+        try:
+            with open(os.path.join(os.path.dirname(__file__), "enemies_stats.json"), "r") as f:
+                self.enemy_stats = json.load(f)
+        except Exception as e:
+            print(f"Erreur de chargement des stats ennemis : {e}")
+            self.enemy_stats = {}
+
         self.dungeon = None
         self.player = None
         self.enemies = []
         self.health_potions = []
         self.bullets = []
-
         self.start_time = None
         self.enemies_killed = 0
         self.current_level = 1  # Niveau actuel du donjon
         self.total_enemies_killed = 0  # Total des ennemis tués sur tous les niveaux
-
-        # Chemin du fichier de sauvegarde
         self.save_file = os.path.join(os.path.dirname(__file__), "dungeon_save.json")
 
     def save_game(self):
@@ -676,67 +692,97 @@ class Game:
         self.dungeon = Dungeon(20, 20)
         self.dungeon.generate()
 
-    def is_valid_potion_position(self, x, y):
-        """Vérifie si une position est valide pour placer une potion."""
-        if self.dungeon.is_wall(x, y):
-            return False
-        if abs(x - self.player.x) < 1 or abs(y - self.player.y) < 1:  # Distance réduite
-            return False
-        if any(abs(x - e.x) < 1 and abs(y - e.y) < 1 for e in self.enemies):  # Distance réduite
-            return False
-        return True
+    def _find_valid_enemy_position(self, room=None, enemy_radius=0.4, min_distance_from_player=5, min_distance_between_enemies=2, attempts=200):
+        """Cherche une position valide pour un ennemi : dans la room (si fournie) ou globalement.
+        La position doit tenir avec un rayon (can_occupy), ne pas être trop proche d'un mur,
+        ne pas être trop proche du joueur ni d'autres ennemis.
+        """
+        for _ in range(attempts):
+            if room:
+                # éviter les bords de la salle pour réduire chance d'être dans un mur
+                min_x = room["x"] + 1
+                max_x = room["x"] + room["w"] - 2
+                min_y = room["y"] + 1
+                max_y = room["y"] + room["h"] - 2
+                if min_x > max_x or min_y > max_y:
+                    x = random.randint(room["x"], room["x"] + room["w"] - 1)
+                    y = random.randint(room["y"], room["y"] + room["h"] - 1)
+                else:
+                    x = random.randint(min_x, max_x)
+                    y = random.randint(min_y, max_y)
+            else:
+                x = random.randint(1, self.dungeon.width - 2)
+                y = random.randint(1, self.dungeon.height - 2)
+
+            if not (0 <= x < self.dungeon.width and 0 <= y < self.dungeon.height):
+                continue
+
+            # doit tenir complètement (rayon)
+            # si enemy_radius absent, estimer à partir du type si possible
+            if enemy_radius is None:
+                enemy_radius = min(MAX_ENEMY_RADIUS, 0.5)
+            if not self.dungeon.can_occupy(x, y, radius=enemy_radius):
+                continue
+
+            # trop proche d'un mur ? (min_distance basé sur le radius)
+            wall_min_distance = max(1, int(math.ceil(enemy_radius * 2)))
+            if self.is_near_wall(x, y, min_distance=wall_min_distance):
+                continue
+
+            # trop proche du joueur ?
+            if math.hypot(x - self.player.x, y - self.player.y) < min_distance_from_player:
+                continue
+
+            # ne doit pas chevaucher d'autres ennemis
+            if any(math.hypot(x - e.x, y - e.y) < (min_distance_between_enemies + enemy_radius) for e in self.enemies):
+                continue
+
+            return x, y
+        return None
 
     def is_near_wall(self, x, y, min_distance=2):
-        """Vérifie si une position est trop proche d'un mur."""
+        """Vérifie si une position est trop proche d'un mur (utilisé pour placement de potions/ennemis)."""
         for dx in range(-min_distance, min_distance + 1):
             for dy in range(-min_distance, min_distance + 1):
                 if self.dungeon.is_wall(x + dx, y + dy):
                     return True
         return False
 
-    def place_potions(self, num_potions=6, max_attempts=50):
-        """Place un nombre donné de potions dans le donjon."""
-        self.health_potions = []
-        for _ in range(num_potions):
-            for _ in range(max_attempts):
-                x, y = random.randint(1, self.dungeon.width - 2), random.randint(1, self.dungeon.height - 2)
-                if (not self.dungeon.is_wall(x, y) and not self.is_near_wall(x, y, min_distance=2) and abs(x - self.player.x) >= 1 and abs(y - self.player.y) >= 1):
-                    self.health_potions.append(HealthPotion(x, y))
-                    break
-        print(f"Potions ajoutées : {len(self.health_potions)}")
+    def is_valid_potion_position(self, x, y, min_dist_player=1):
+        """Vérifie si une position est valide pour placer une potion (pas mur, pas près du joueur/ennemis)."""
+        if self.dungeon.is_wall(x, y):
+            return False
+        if abs(x - self.player.x) < min_dist_player or abs(y - self.player.y) < min_dist_player:
+            return False
+        if any(abs(x - e.x) < min_dist_player and abs(y - e.y) < min_dist_player for e in self.enemies):
+            return False
+        return True
 
+    # --- Consolidated placement & scaling helpers (single implementations) ---
     def get_enemy_types_for_level(self, level):
-        """Retourne les types d'ennemis disponibles selon le niveau du donjon"""
-        if level == 1:
-            return ["goblin", "skeleton"]  # Ennemis faciles
-        elif level == 2:
-            return ["skeleton", "orc"]  # Ennemis moyens
-        elif level == 3:
-            return ["orc", "troll"]  # Ennemis difficiles
-        else:
-            return ["orc", "troll", "troll"]  # Beaucoup de trolls pour les niveaux élevés
+        """Retourne dynamiquement les types d'ennemis disponibles selon le niveau du donjon."""
+        if not getattr(self, 'enemy_stats', None):
+            print("Avertissement : aucune statistique d'ennemi chargée, utilisation du type 'orc' par défaut.")
+            return ["orc"]
+        filtered = [enemy_type for enemy_type, stats in self.enemy_stats.items() if stats.get("level", 1) <= level]
+        if filtered:
+            return filtered
+        min_level = min(stats.get("level", 1) for stats in self.enemy_stats.values())
+        return [enemy_type for enemy_type, stats in self.enemy_stats.items() if stats.get("level", 1) == min_level]
 
     def scale_enemies_for_level(self, level):
-        """Augmente la difficulté des ennemis selon le niveau du donjon"""
-        scaling_factor = (level - 1) * 0.2  # 20% d'augmentation par niveau
-
+        """Augmente la difficulté des ennemis selon le niveau du donjon."""
+        scaling_factor = (level - 1) * 0.2
         for enemy in self.enemies:
-            # Augmenter les HP
             bonus_hp = int(enemy.max_hp * scaling_factor)
             enemy.max_hp += bonus_hp
             enemy.hp += bonus_hp
-
-            # Augmenter le niveau effectif pour les calculs de combat
             enemy.level += level - 1
-
-            # Augmenter les récompenses XP
             enemy.xp_value = int(enemy.xp_value * (1 + scaling_factor))
 
     def place_entities_for_level(self, level, preserve_player_stats=False):
-        """Place les entités en fonction du niveau, en préservant optionnellement les stats du joueur"""
+        """Place les entités en fonction du niveau, en préservant optionnellement les stats du joueur."""
         self.enemies_killed = 0
-
-        # Créer ou réutiliser le joueur
         if not preserve_player_stats or self.player is None:
             if self.dungeon.rooms:
                 room = self.dungeon.rooms[0]
@@ -744,7 +790,6 @@ class Game:
             else:
                 self.player = Player3D(1, 1)
         else:
-            # Repositionner le joueur au début du nouveau niveau
             if self.dungeon.rooms:
                 room = self.dungeon.rooms[0]
                 self.player.x = room["x"] + 1
@@ -753,75 +798,49 @@ class Game:
                 self.player.x, self.player.y = 1, 1
             self.player.angle = 0
 
-        # Récupérer les types d'ennemis pour ce niveau
         available_types = self.get_enemy_types_for_level(level)
-
         self.enemies = []
         min_distance_from_player = 5
         min_distance_between_enemies = 2
 
-        # Plus d'ennemis pour les niveaux élevés
         base_enemies_per_room = 1 + (level - 1) // 2
         base_corridor_enemies = 3 + (level - 1)
 
-        # Placer des ennemis dans chaque salle (sauf la première)
         for room in self.dungeon.rooms[1:]:
             for _ in range(base_enemies_per_room):
-                for attempt in range(50):
-                    x = random.randint(room["x"], room["x"] + room["w"] - 1)
-                    y = random.randint(room["y"], room["y"] + room["h"] - 1)
-
-                    if not (0 <= x < self.dungeon.width and 0 <= y < self.dungeon.height):
-                        continue
-                    if self.dungeon.is_wall(x, y) or self.is_near_wall(x, y, min_distance=2):
-                        continue
-                    if math.sqrt((x - self.player.x) ** 2 + (y - self.player.y) ** 2) < min_distance_from_player:
-                        continue
-                    if any(math.sqrt((x - e.x) ** 2 + (y - e.y) ** 2) < min_distance_between_enemies for e in self.enemies):
-                        continue
-
-                    enemy_type = random.choice(available_types)
-                    self.enemies.append(Enemy(x, y, enemy_type, available_types))
-                    break
-
-        # Ajouter des ennemis dans les couloirs
-        for _ in range(base_corridor_enemies):
-            for attempt in range(50):
-                x = random.randint(1, self.dungeon.width - 2)
-                y = random.randint(1, self.dungeon.height - 2)
-
-                if not (0 <= x < self.dungeon.width and 0 <= y < self.dungeon.height):
-                    continue
-                if self.dungeon.is_wall(x, y):
-                    continue
-                if math.sqrt((x - self.player.x) ** 2 + (y - self.player.y) ** 2) < min_distance_from_player:
-                    continue
-                if any(math.sqrt((x - e.x) ** 2 + (y - e.y) ** 2) < min_distance_between_enemies for e in self.enemies):
-                    continue
-
                 enemy_type = random.choice(available_types)
-                self.enemies.append(Enemy(x, y, enemy_type, available_types))
-                break
+                height = self.enemy_stats.get(enemy_type, {}).get("height", 2.2)
+                enemy_radius = min(MAX_ENEMY_RADIUS, height * ENEMY_RADIUS_FACTOR)
+                pos = self._find_valid_enemy_position(room=room, enemy_radius=enemy_radius, min_distance_from_player=min_distance_from_player, min_distance_between_enemies=min_distance_between_enemies, attempts=60)
+                if pos:
+                    x, y = pos
+                    self.enemies.append(Enemy(x, y, enemy_type, available_types, self.enemy_stats))
 
-        # Appliquer le scaling de difficulté
+        for _ in range(base_corridor_enemies):
+            enemy_type = random.choice(available_types)
+            height = self.enemy_stats.get(enemy_type, {}).get("height", 2.2)
+            enemy_radius = min(MAX_ENEMY_RADIUS, height * ENEMY_RADIUS_FACTOR)
+            pos = self._find_valid_enemy_position(room=None, enemy_radius=enemy_radius, min_distance_from_player=min_distance_from_player, min_distance_between_enemies=min_distance_between_enemies, attempts=80)
+            if pos:
+                x, y = pos
+                self.enemies.append(Enemy(x, y, enemy_type, available_types, self.enemy_stats))
+
         self.scale_enemies_for_level(level)
 
-        # Ajouter plus de potions pour les niveaux élevés
-        potion_count = 6 + (level - 1) * 2
+        potion_count = min(3, 1 + (level - 1) // 2)
         self.health_potions = []
         for _ in range(potion_count):
             for attempt in range(50):
                 x, y = random.randint(1, self.dungeon.width - 2), random.randint(1, self.dungeon.height - 2)
-                if (not self.dungeon.is_wall(x, y) and abs(x - self.player.x) >= 1 and abs(y - self.player.y) >= 1 and
-                        all(abs(x - e.x) >= 1 and abs(y - e.y) >= 1 for e in self.enemies)):
+                if self.is_valid_potion_position(x, y) and not self.is_near_wall(x, y, min_distance=2) and self.dungeon.can_occupy(x, y, radius=POTION_RADIUS):
                     self.health_potions.append(HealthPotion(x, y))
                     break
 
         print(f"Niveau {level}: {len(self.enemies)} ennemis, {len(self.health_potions)} potions")
-        print(f"Types d'ennemis disponibles: {available_types}")
 
     def place_entities(self):
-        self.enemies_killed = 0  # Réinitialiser le compteur d'ennemis tués
+        """Place les entités pour une nouvelle partie (version simplifiée)."""
+        self.enemies_killed = 0
         if self.dungeon.rooms:
             room = self.dungeon.rooms[0]
             self.player = Player3D(room["x"] + 1, room["y"] + 1)
@@ -830,58 +849,41 @@ class Game:
 
         self.enemies = []
         available_types = get_available_enemy_types()
-        min_distance_from_player = 5  # Distance minimale entre le joueur et les monstres
-        min_distance_between_enemies = 2  # Distance minimale entre les monstres
+        if not available_types:
+            available_types = ["orc"]
 
-        # Placer un ennemi par salle (sauf la première)
+        min_distance_from_player = 5
+        min_distance_between_enemies = 2
+
         for room in self.dungeon.rooms[1:]:
-            for _ in range(50):  # Limiter les tentatives de placement
-                x = random.randint(room["x"], room["x"] + room["w"] - 1)
-                y = random.randint(room["y"], room["y"] + room["h"] - 1)
+            enemy_type = random.choice(available_types)
+            height = self.enemy_stats.get(enemy_type, {}).get("height", 2.2)
+            enemy_radius = min(MAX_ENEMY_RADIUS, height * ENEMY_RADIUS_FACTOR)
+            pos = self._find_valid_enemy_position(room=room, enemy_radius=enemy_radius, min_distance_from_player=min_distance_from_player, min_distance_between_enemies=min_distance_between_enemies, attempts=60)
+            if pos:
+                x, y = pos
+                self.enemies.append(Enemy(x, y, enemy_type, available_types, self.enemy_stats))
 
-                if not (0 <= x < self.dungeon.width and 0 <= y < self.dungeon.height):
-                    continue
-                if self.dungeon.is_wall(x, y) or self.is_near_wall(x, y, min_distance=2):
-                    continue
-                if math.sqrt((x - self.player.x) ** 2 + (y - self.player.y) ** 2) < min_distance_from_player:
-                    continue
-                if any(math.sqrt((x - e.x) ** 2 + (y - e.y) ** 2) < min_distance_between_enemies for e in self.enemies):
-                    continue
-
-                self.enemies.append(Enemy(x, y, available_types=available_types))
-                break
-
-        # Ajouter quelques ennemis dans les couloirs
+        # quelques ennemis dans les couloirs
         for _ in range(3):
-            for _ in range(50):  # Limiter les tentatives de placement
-                x = random.randint(1, self.dungeon.width - 2)
-                y = random.randint(1, self.dungeon.height - 2)
+            enemy_type = random.choice(available_types)
+            height = self.enemy_stats.get(enemy_type, {}).get("height", 2.2)
+            enemy_radius = min(MAX_ENEMY_RADIUS, height * ENEMY_RADIUS_FACTOR)
+            pos = self._find_valid_enemy_position(room=None, enemy_radius=enemy_radius, min_distance_from_player=min_distance_from_player, min_distance_between_enemies=min_distance_between_enemies, attempts=60)
+            if pos:
+                x, y = pos
+                self.enemies.append(Enemy(x, y, enemy_type, available_types=available_types))
 
-                if not (0 <= x < self.dungeon.width and 0 <= y < self.dungeon.height):
-                    continue
-                if self.dungeon.is_wall(x, y):
-                    continue
-                if math.sqrt((x - self.player.x) ** 2 + (y - self.player.y) ** 2) < min_distance_from_player:
-                    continue
-                if any(math.sqrt((x - e.x) ** 2 + (y - e.y) ** 2) < min_distance_between_enemies for e in self.enemies):
-                    continue
-
-                self.enemies.append(Enemy(x, y, available_types=available_types))
-                break
-
-        # Ajouter les potions
+        # potions
         self.health_potions = []
-        for _ in range(6):  # Nombre de potions à placer
+        default_potion_count = 2
+        for _ in range(default_potion_count):
             for _ in range(50):  # Limiter les tentatives de placement
                 x, y = random.randint(1, self.dungeon.width - 2), random.randint(1, self.dungeon.height - 2)
-                if (not self.dungeon.is_wall(x, y) and abs(x - self.player.x) >= 1 and abs(y - self.player.y) >= 1 and
-                        all(abs(x - e.x) >= 1 and abs(y - e.y) >= 1 for e in self.enemies)):  # Distance réduite
+                if self.is_valid_potion_position(x, y) and not self.is_near_wall(x, y, min_distance=2) and self.dungeon.can_occupy(x, y, radius=POTION_RADIUS):
                     self.health_potions.append(HealthPotion(x, y))
                     break
 
-        # Vérification des potions ajoutées
-        # print(f"Potions ajoutées : {[{'x': p.x, 'y': p.y} for p in self.health_potions]}")
-        print(f"Potions ajoutées : {len(self.health_potions)}")
 
     def handle_input(self, keys):
         if keys[pygame.K_z]:
@@ -904,7 +906,7 @@ class Game:
             if not bullet.update(self.dungeon):
                 self.bullets.remove(bullet)
                 continue
-            
+
             if bullet.is_player_bullet:
                 for enemy in self.enemies[:]:
                     if abs(bullet.x - enemy.x) < 0.3 and abs(bullet.y - enemy.y) < 0.3:
@@ -1181,21 +1183,36 @@ class Game:
         print(f"Difficulté augmentée, {len(self.enemies)} ennemis à affronter!")
 
     def render_walls(self, width, height):
-        for x in range(0, width, 2):
+        # Préparer des buffers par colonne pour le depth/wall-top afin de pouvoir occlure les sprites proprement
+        self._depth_buffer = [float('inf')] * width
+        self._wall_top_buffer = [height] * width
+        self._wall_bottom_buffer = [0] * width
+
+        # Raycast par colonne (plus précis) et remplir les buffers
+        for x in range(0, width):
             angle = self.player.angle - self.player.fov / 2 + (x / width) * self.player.fov
             distance, hit_x, hit_y = cast_ray(self.player, angle, self.dungeon)
+            # Corriger le 'fisheye' par le cos de l'angle relatif
             distance *= math.cos(angle - self.player.angle)
-            if distance > 0:
-                wall_height = int(height / (distance + 0.1))
-                wall_top = (height - wall_height) // 2
-                wall_bottom = wall_top + wall_height
-                wall_x = hit_x - math.floor(hit_x)
-                if abs(math.cos(angle)) > abs(math.sin(angle)):
-                    wall_x = hit_y - math.floor(hit_y)
-                base_color = 120 if int(wall_x * 8) % 2 == 0 else 100
-                brightness = max(50, 255 - int(distance * 12))
-                color = (min(255, base_color + brightness // 3), min(255, base_color // 2 + brightness // 4), min(255, base_color // 3 + brightness // 5))
-                pygame.draw.line(self.screen, color, (x, wall_top), (x, wall_bottom), 2)
+            if distance <= 0:
+                continue
+            wall_height = int(height / (distance + 0.1))
+            wall_top = (height - wall_height) // 2
+            wall_bottom = wall_top + wall_height
+            wall_x = hit_x - math.floor(hit_x)
+            if abs(math.cos(angle)) > abs(math.sin(angle)):
+                wall_x = hit_y - math.floor(hit_y)
+            base_color = 120 if int(wall_x * 8) % 2 == 0 else 100
+            brightness = max(50, 255 - int(distance * 12))
+            color = (min(255, base_color + brightness // 3), min(255, base_color // 2 + brightness // 4), min(255, base_color // 3 + brightness // 5))
+
+            # remplir buffers
+            self._depth_buffer[x] = distance
+            self._wall_top_buffer[x] = wall_top
+            self._wall_bottom_buffer[x] = wall_bottom
+
+            # dessiner la colonne de mur
+            pygame.draw.line(self.screen, color, (x, wall_top), (x, wall_bottom), 1)
 
     def render_player_ui(self, width, height):
         debug_font = pygame.font.Font(None, 24)
@@ -1258,13 +1275,31 @@ class Game:
 
     def render_entity(self, enemy, width, height):
         distance, angle_diff, screen_x = get_perspective_params(enemy.x, enemy.y, self.player, width, height)
-        if distance < 10 and abs(angle_diff) < self.player.fov / 2 and has_line_of_sight(self.player, enemy, self.dungeon):
+        if distance < 10 and abs(angle_diff) < self.player.fov / 2:
+            # On s'appuie désormais sur le depth buffer rempli par render_walls (par colonne)
+            visible_fraction = 1.0
+            EPS = 0.12
+            if hasattr(self, '_depth_buffer') and self._depth_buffer:
+                # échantillonner plusieurs colonnes du sprite (gauche, centre, droite) pour une estimation conservative
+                sprite_center = int(screen_x)
+                sprite_half_w = max(1, int((screen_x - (screen_x - 0)) + 0))
+                # calculer largeur projetée plus bas après avoir obtenu screen_width_px
+            else:
+                # fallback vers raycast simple si pas de buffer
+                angle_to_enemy = math.atan2(enemy.y - self.player.y, enemy.x - self.player.x)
+                wall_distance, _, _ = cast_ray(self.player, angle_to_enemy, self.dungeon)
+                if wall_distance + EPS < distance:
+                    visible_fraction = max(0.0, (distance - wall_distance) / (distance + 1e-6))
+                if visible_fraction <= 0.05:
+                    return
+            # nous continuerons et appliquerons un crop si visible_fraction < 1
             sprite_surface = self.enemy_sprites.get(enemy.enemy_type, self.enemy_sprites.get('orc', generate_enemy_sprite()))
             original_width, original_height = sprite_surface.get_size()
             aspect_ratio = original_width / original_height
             real_height = enemy.height
             perspective_scale = 1.0 / (distance + 0.1)
-            screen_height_px = max(40, int(real_height * 200 * perspective_scale))
+            base_height_px = 180  # 1m = 180px à distance 1 (plus grand)
+            screen_height_px = max(40, int(real_height * base_height_px * perspective_scale))
             screen_width_px = int(screen_height_px * aspect_ratio)
             eye_level_y = height // 2
             vertical_offset = int(self.player.eye_height * VERTICAL_PERSPECTIVE_FACTOR / (distance + 0.1))
@@ -1281,7 +1316,41 @@ class Game:
                     dark_sprite.fill(red_tint, special_flags=pygame.BLEND_MULT)
                 else:
                     dark_sprite.fill((int(255 * brightness), int(255 * brightness), int(255 * brightness)), special_flags=pygame.BLEND_MULT)
-                self.screen.blit(dark_sprite, (sprite_x, sprite_y))
+
+                # Si on a un depth buffer, échantillonner plusieurs colonnes et calculer la fraction visible minimale
+                if hasattr(self, '_depth_buffer') and self._depth_buffer:
+                    samples = []
+                    # choisir jusqu'à 5 échantillons uniformes sur la largeur du sprite
+                    n_samples = min(5, max(1, screen_width_px))
+                    for s in range(n_samples):
+                        col = int(sprite_x + (s / max(1, n_samples - 1)) * screen_width_px)
+                        if col < 0 or col >= width:
+                            continue
+                        wall_dist = self._depth_buffer[col]
+                        wall_top = self._wall_top_buffer[col]
+                        # si un mur est plus proche
+                        if wall_dist + EPS < distance:
+                            visible_pixels = wall_top - sprite_y
+                            visible_frac_col = max(0.0, min(1.0, visible_pixels / float(screen_height_px)))
+                        else:
+                            visible_frac_col = 1.0
+                        samples.append(visible_frac_col)
+                    if samples:
+                        visible_fraction = min(samples)
+                    else:
+                        visible_fraction = 1.0
+
+                # Si occlusion partielle: cropper verticalement la portion visible (du haut)
+                if visible_fraction < 1.0:
+                    crop_h = max(1, int(screen_height_px * visible_fraction))
+                    try:
+                        cropped = dark_sprite.subsurface((0, 0, screen_width_px, crop_h)).copy()
+                    except Exception:
+                        cropped = pygame.Surface((screen_width_px, crop_h), pygame.SRCALPHA)
+                        cropped.blit(dark_sprite, (0, 0), (0, 0, screen_width_px, crop_h))
+                    self.screen.blit(cropped, (sprite_x, sprite_y))
+                else:
+                    self.screen.blit(dark_sprite, (sprite_x, sprite_y))
 
                 # Barre d'HP au-dessus de l'ennemi
                 if enemy.hp < enemy.max_hp:
