@@ -1,0 +1,182 @@
+{
+  "Bat": {
+    "image": "assets/enemies/Bat.png",
+    "height": 1.0,
+    "ground_level": false,
+    "hp": 10,
+    "level": 1,
+    "xp_value": 5,
+    "damage_dice": "1d4",
+    "accuracy": 0.6
+  },
+  "Choker": {
+    "image": "assets/enemies/Choker.png",
+    "height": 1.2,
+    "ground_level": true,
+    "hp": 15,
+    "level": 2,
+    "xp_value": 8,
+    "damage_dice": "1d6",
+    "accuracy": 0.65
+  },
+  "Crab": {
+    "image": "assets/enemies/Crab.png",
+    "height": 0.5,
+    "ground_level": true,
+    "hp": 8,
+    "level": 1,
+    "xp_value": 4,
+    "damage_dice": "1d3",
+    "accuracy": 0.5
+  },
+  "Eagle": {
+    "image": "assets/enemies/Eagle.png",
+    "height": 1.5,
+    "ground_level": false,
+    "hp": 12,
+    "level": 2,
+    "xp_value": 7,
+    "damage_dice": "1d5",
+    "accuracy": 0.7
+  },
+  "Frog": {
+    "image": "assets/enemies/Frog.png",
+    "height": 0.4,
+    "ground_level": true,
+    "hp": 6,
+    "level": 1,
+    "xp_value": 3,
+    "damage_dice": "1d2",
+    "accuracy": 0.4
+  },
+  "Frost Druid": {
+    "image": "assets/enemies/Frost Druid.png",
+    "height": 1.8,
+    "ground_level": true,
+    "hp": 20,
+    "level": 3,
+    "xp_value": 12,
+    "damage_dice": "2d4",
+    "accuracy": 0.75
+  },
+  "Imp": {
+    "image": "assets/enemies/Imp.png",
+    "height": 1.1,
+    "ground_level": false,
+    "hp": 14,
+    "level": 2,
+    "xp_value": 9,
+    "damage_dice": "1d6",
+    "accuracy": 0.7
+  },
+  "Ghost Dragon": {
+    "image": "assets/enemies/Ghost Dragon.png",
+    "height": 3.0,
+    "ground_level": false,
+    "hp": 50,
+    "level": 5,
+    "xp_value": 30,
+    "damage_dice": "3d6",
+    "accuracy": 0.85
+  },
+  "goblin1": {
+    "image": "assets/enemies/goblin1.png",
+    "height": 1.0,
+    "ground_level": true,
+    "hp": 10,
+    "level": 1,
+    "xp_value": 5,
+    "damage_dice": "1d4",
+    "accuracy": 0.6
+  },
+  "goblin2": {
+    "image": "assets/enemies/goblin2.png",
+    "height": 1.0,
+    "ground_level": true,
+    "hp": 12,
+    "level": 1,
+    "xp_value": 6,
+    "damage_dice": "1d4",
+    "accuracy": 0.6
+  },
+  "goblin3": {
+    "image": "assets/enemies/goblin3.png",
+    "height": 1.0,
+    "ground_level": true,
+    "hp": 14,
+    "level": 2,
+    "xp_value": 7,
+    "damage_dice": "1d6",
+    "accuracy": 0.65
+  },
+  "goblin4": {
+    "image": "assets/enemies/goblin4.png",
+    "height": 1.0,
+    "ground_level": true,
+    "hp": 16,
+    "level": 2,
+    "xp_value": 8,
+    "damage_dice": "1d6",
+    "accuracy": 0.65
+  },
+  "orc": {
+    "image": "assets/enemies/orc.png",
+    "height": 1.7,
+    "ground_level": true,
+    "hp": 18,
+    "level": 2,
+    "xp_value": 10,
+    "damage_dice": "2d4",
+    "accuracy": 0.7
+  },
+  "skeleton": {
+    "image": "assets/enemies/skeleton.png",
+    "height": 1.6,
+    "ground_level": true,
+    "hp": 15,
+    "level": 2,
+    "xp_value": 8,
+    "damage_dice": "1d6",
+    "accuracy": 0.65
+  },
+  "troll": {
+    "image": "assets/enemies/troll.png",
+    "height": 2.2,
+    "ground_level": true,
+    "hp": 30,
+    "level": 3,
+    "xp_value": 15,
+    "damage_dice": "2d6",
+    "accuracy": 0.7
+  },
+  "troll2": {
+    "image": "assets/enemies/troll2.png",
+    "height": 2.2,
+    "ground_level": true,
+    "hp": 32,
+    "level": 3,
+    "xp_value": 16,
+    "damage_dice": "2d6",
+    "accuracy": 0.7
+  },
+  "troll3": {
+    "image": "assets/enemies/troll3.png",
+    "height": 2.2,
+    "ground_level": true,
+    "hp": 34,
+    "level": 4,
+    "xp_value": 18,
+    "damage_dice": "2d8",
+    "accuracy": 0.75
+  },
+  "troll4": {
+    "image": "assets/enemies/troll4.png",
+    "height": 2.2,
+    "ground_level": true,
+    "hp": 36,
+    "level": 4,
+    "xp_value": 20,
+    "damage_dice": "2d8",
+    "accuracy": 0.75
+  }
+}
