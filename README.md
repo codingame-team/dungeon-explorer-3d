@@ -60,8 +60,8 @@ Immersive 3D dungeon experience with real-time combat and advanced graphics.
 ### Quick Start
 ```bash
 # Clone repository
-git clone <repository-url>
-cd tools/dungeon_perl
+git clone https://github.com/codingame-team/dungeon-explorer-3d.git
+cd dungeon-explorer-3d
 
 # For 2D version (no dependencies)
 python dungeon.py
@@ -107,7 +107,7 @@ Both games use the same procedural generation algorithm:
 
 ## File Structure
 ```
-tools/dungeon_perl/
+dungeon-explorer-3d/
 ├── dungeon.py              # 2D top-down version
 ├── dungeon_3d.py           # 3D first-person version
 ├── load_assets.py          # Asset loading utilities
