@@ -7,10 +7,9 @@
 - `assets/screenshots/level_complete.jpg` — Écran de fin de niveau : résumé des statistiques, options pour lancer le niveau suivant ou sauvegarder.
 
 
-<img src="../assets/screenshots/start_game.jpg" width="400"/>
-<img src="../assets/screenshots/exploration.jpg" width="400"/>
-<img src="../assets/screenshots/combat.jpg" width="400"/>
-<img src="../assets/screenshots/level_complete.jpg" width="400"/>
-
+<img src="../assets/screenshots/start_game.jpg" width="400" alt="Écran de démarrage"/>
+<img src="../assets/screenshots/exploration.jpg" width="400" alt="Exploration - mini-carte et HUD"/>
+<img src="../assets/screenshots/combat.jpg" width="400" alt="Combat - vue ennemis et HUD"/>
+<img src="../assets/screenshots/level_complete.jpg" width="400" alt="Écran de fin de niveau"/>
 
 ---

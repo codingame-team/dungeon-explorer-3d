@@ -116,6 +116,11 @@ dungeon-explorer-3d/
 └── README.md               # This file
 ```
 
+### Documentation
+- Captures d'écran du gameplay : [docs/screenshots.md](docs/screenshots.md) (exemples et vignettes)
+- Bestiaire (fiches et vignettes) : [assets/bestiary-sublist.md](assets/bestiary-sublist.md)
+- Statistiques structurées des monstres (JSON) : [assets/bestiary-sublist-data.json](assets/bestiary-sublist-data.json)
+
 ## Development
 
 ### Adding New Features
